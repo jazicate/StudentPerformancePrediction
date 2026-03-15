@@ -1,24 +1,50 @@
 # Student Performance Prediction
 
-This project aims to predict whether a student will pass or fail based on various features such as demographics, study time, and family background. 
-Three machine learning models—K-Nearest Neighbors (KNN), Random Forest, and Support Vector Machine (SVM)—are trained and evaluated on a student performance dataset. 
-The project includes data preprocessing, hyperparameter tuning, model evaluation, and visualization of results.
+This project trains and compares three classifiers on the UCI Student Performance dataset:
 
-## Requirements
-- Python 3.x
-- Required libraries:
-    - pandas
-    - matplotlib
-    - seaborn
-    - scikit-learn
-    - tabulate
-    - os
+- K-Nearest Neighbors (KNN), tuned with `GridSearchCV`
+- `RandomForestClassifier`
+- `SVC` with probability estimates enabled
 
- You can install the necessary libraries using the following command:
- 
-```bash
-pip install pandas matplotlib seaborn scikit-learn tabulate
-```
+The script handles dataset inspection, pass/fail target creation from the final grade, one-hot encoding of categorical features, train/test splitting, feature scaling, metric reporting, cross-validation, and plot generation.
+
+## What the project does
+`main.py` runs a full end-to-end classification workflow:
+
+- Loads `student/student-mat.csv`
+- Checks dataset shape, sample rows, duplicates, missing values, and dataframe info
+- Creates a binary `pass_fail` target from `G3`
+- One-hot encodes the categorical columns
+- Splits the data into 80% training and 20% test sets
+- Standardizes features before model fitting
+- Tunes KNN hyperparameters with 10-fold stratified cross-validation
+- Trains the three models
+- Evaluates each model on the test set
+- Prints a comparison table with:
+  - Accuracy
+  - Precision
+  - Recall
+  - F1-score
+  - Specificity
+  - Log-loss
+- Prints a second table with cross-validation mean accuracy and standard deviation
+
+It also saves visual output under `Data Visualization/`, including:
+
+- A model-comparison bar chart
+- A confusion matrix for KNN
+- A confusion matrix for Random Forest
+- A confusion matrix for SVM
+- A ROC curve for KNN
+- A ROC curve for Random Forest
+- A ROC curve for SVM
+
+## Project layout
+`main.py` contains the full training, evaluation, and visualization pipeline.
+
+`student/` contains the local copy of the dataset and related source files.
+
+`Data Visualization/` contains generated plots from previous runs.
 
 ## Dataset
 Cortez, P. (2008). Student Performance [Dataset]. UCI Machine Learning Repository. https://doi.org/10.24432/C5TG7T.
@@ -27,48 +53,75 @@ The dataset used is from the UCI Machine Learning Repository, specifically the S
 This dataset contains attributes about students (e.g., demographics, study time, family support) and their final grades. 
 The target variable (G3) indicates the final grade, where a grade of 10 or higher is considered a "pass" and below 10 is a "fail."
 
-## Usage
-### Step 1: Data Preprocessing
-The dataset is first loaded into a Pandas DataFrame. Then, we create a new target variable pass_fail, where 1 indicates the student passed and 0 indicates the student failed. 
-Categorical variables are converted into binary features using one-hot encoding.
+## Requirements
+This project was run with Python 3.10 in a local virtual environment at `.venv`.
 
-### Step 2: Model Training
-Three classification models are used for training:
-- Optimized K-Nearest Neighbors (KNN): Hyperparameters (number of neighbors, distance metric, and weighting scheme) are tuned using GridSearchCV.
-- Random Forest: A default Random Forest classifier is used.
-- Support Vector Machine (SVM): A default SVM classifier is used with probability estimates enabled.
+Create the environment:
 
-### Step 3: Model Evaluation
-For each model, evaluation is done on the test set. The following metrics are reported:
-- Accuracy
-- Precision
-- Recall
-- F1-Score
-- Specificity
-- Log Loss
+```bash
+python3 -m venv .venv
+```
 
-Cross-validation is also performed on each model to assess stability and generalization performance.
+Activate it:
 
-### Step 4: Results Visualization
-The results are visualized as:
-- A bar plot comparing model metrics (Accuracy, Precision, Recall, etc.).
-- Confusion matrices for each model, showing the performance of the model in terms of true positives, false positives, true negatives, and false negatives.
-- ROC (Receiver Operating Characteristic) curves for each model, showing the trade-off between true positive rate and false positive rate.
+```bash
+source .venv/bin/activate
+```
 
-All visualizations (model comparison bar chart, confusion matrices, and ROC curves) are saved in the 'Data Visualization/' directory.
+Install the dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+## How to run
+From the project root:
+
+```bash
+source .venv/bin/activate
+python3 main.py
+```
+
+The script prints dataset inspection output, the selected KNN hyperparameters, per-model evaluation metrics, and a final cross-validation summary in the terminal.
 
 ## Results
-The models are compared based on:
-- **Accuracy:** Random Forest outperforms the other models with 91.1% accuracy.
-- **Precision:** Random Forest also shows the highest precision, closely followed by SVM.
-- **Recall:** Optimized KNN has the highest recall at 94.2%, but this comes at the cost of lower specificity.
-- **F1-Score:** Random Forest achieves the highest F1-score, indicating the best balance between precision and recall.
+Measured results from a fresh run on the local student dataset with `random_state=42`, an 80/20 train-test split, and `stratify=y`:
 
-### Cross-Validation Results
-- **Random Forest** has the highest mean accuracy (92.1%) with the lowest variance (6.9%), making it the most stable model.
-- **Optimized KNN** performs well in terms of recall but has a lower mean accuracy and higher variance.
+| Metric | Optimized KNN | Random Forest | SVM |
+| --- | ---: | ---: | ---: |
+| Accuracy | 0.7089 | 0.8861 | 0.8101 |
+| Precision | 0.7143 | 0.9583 | 0.8519 |
+| Recall | 0.9434 | 0.8679 | 0.8679 |
+| F1-score | 0.8130 | 0.9109 | 0.8598 |
+| Specificity | 0.2308 | 0.9231 | 0.6923 |
+| Log-loss | 0.4898 | 0.2998 | 0.3766 |
 
-## Conclusion
-- **Random Forest** is the best-performing model overall, providing the highest accuracy, precision, and F1-score.
-- **SVM** is a solid alternative, offering a good balance of precision and recall.
-- **KNN** is optimized for recall but sacrifices accuracy and specificity.
+Cross-validation results from the same run:
+
+| Model | CV Mean Accuracy | CV Std Accuracy |
+| --- | ---: | ---: |
+| Random Forest | 0.9149 | 0.0540 |
+| SVM | 0.8417 | 0.0543 |
+| Optimized KNN | 0.7438 | 0.0353 |
+
+Best hyperparameters selected for KNN:
+
+- `metric='manhattan'`
+- `n_neighbors=11`
+- `weights='distance'`
+
+Generated visualization charts:
+
+- `Data Visualization/model_comparison.png`
+- `Data Visualization/knn_confusion_matrix.png`
+- `Data Visualization/rf_confusion_matrix.png`
+- `Data Visualization/svm_confusion_matrix.png`
+- `Data Visualization/knn_roc.png`
+- `Data Visualization/rf_roc.png`
+- `Data Visualization/svm_roc.png`
+
+## Notes
+- The script currently evaluates all three models on the test set, not on both train and test sets.
+- Feature scaling is applied to the entire processed feature set before fitting each model.
+- The train/test split is now stratified to preserve the pass/fail class balance across both sets.
+- KNN hyperparameter tuning now runs with `n_jobs=1`, which avoids multiprocessing failures in restricted environments.

@@ -18,9 +18,8 @@ if not os.path.exists('Data Visualization'):
 # Import Dataset
 try:
     df = pd.read_csv(filepath_or_buffer="student/student-mat.csv", sep=";")
-except ImportError:
-    print("Error: Import Dataset failed")
-    exit()
+except FileNotFoundError:
+    raise SystemExit("Error: student/student-mat.csv was not found.")
 
 # Data Checking
 print("\n\n***Data Checking***")
@@ -43,12 +42,16 @@ X = df_binary.drop(columns=['G3', 'pass_fail'])
 y = df_binary['pass_fail']
 
 # Split data: training (80%) and testing sets (20%)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
 
 # Normalize features
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
+
+cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
 
 # Tune hyperparameters for KNN using GridSearchCV
 param_grid = {
@@ -58,8 +61,7 @@ param_grid = {
 }
 
 knn = KNeighborsClassifier()
-grid_search = GridSearchCV(knn, param_grid, cv=StratifiedKFold(n_splits=10, shuffle=True, random_state=42),
-                           scoring='accuracy', n_jobs=-1)
+grid_search = GridSearchCV(knn, param_grid, cv=cv, scoring='accuracy', n_jobs=1)
 grid_search.fit(X_train_scaled, y_train)
 
 # Best hyperparameters from GridSearchCV
@@ -72,18 +74,18 @@ knn_best = KNeighborsClassifier(n_neighbors=best_params['n_neighbors'], metric=b
 knn_best.fit(X_train_scaled, y_train)
 
 # Make predictions using optimized KNN
-y_train_pred = knn_best.predict(X_train_scaled)
-y_test_pred = knn_best.predict(X_test_scaled)
+knn_y_test_pred = knn_best.predict(X_test_scaled)
+knn_y_test_proba = knn_best.predict_proba(X_test_scaled)
 
 
-# Evaluate KNN performance
-def evaluate_model(y_true, y_pred, model_name="Model"):
+# Evaluate model performance on the test set
+def evaluate_model(y_true, y_pred, y_pred_proba, model_name="Model"):
     accuracy = accuracy_score(y_true, y_pred)
     precision = precision_score(y_true, y_pred)
     recall = recall_score(y_true, y_pred)
     f1 = f1_score(y_true, y_pred)
     specificity = recall_score(y_true, y_pred, pos_label=0)
-    logloss = log_loss(y_true, knn_best.predict_proba(X_test_scaled))
+    logloss = log_loss(y_true, y_pred_proba)
     return {
         f'{model_name} Accuracy': accuracy,
         f'{model_name} Precision': precision,
@@ -93,8 +95,7 @@ def evaluate_model(y_true, y_pred, model_name="Model"):
         f'{model_name} Log Loss': logloss,
     }
 
-
-knn_metrics = evaluate_model(y_test, y_test_pred, "Optimized KNN")
+knn_metrics = evaluate_model(y_test, knn_y_test_pred, knn_y_test_proba, "Optimized KNN")
 
 # Initialize models
 models = {
@@ -104,11 +105,16 @@ models = {
 
 # Train and evaluate other models (Random Forest, SVM)
 model_metrics = {}
+test_predictions = {'Optimized KNN': knn_y_test_pred}
+test_probabilities = {'Optimized KNN': knn_y_test_proba}
+
 for model_name, model in models.items():
     model.fit(X_train_scaled, y_train)
-    y_train_pred = model.predict(X_train_scaled)
     y_test_pred = model.predict(X_test_scaled)
-    model_metrics[model_name] = evaluate_model(y_test, y_test_pred, model_name)
+    y_test_proba = model.predict_proba(X_test_scaled)
+    test_predictions[model_name] = y_test_pred
+    test_probabilities[model_name] = y_test_proba
+    model_metrics[model_name] = evaluate_model(y_test, y_test_pred, y_test_proba, model_name)
 
 # Combine KNN metrics and model comparison
 all_metrics = {**knn_metrics, **{k: v for model in model_metrics for k, v in model_metrics[model].items()}}
@@ -120,8 +126,7 @@ print(tabulate(all_metrics.items(), headers=['Metric', 'Value'], tablefmt='fancy
 # Perform cross-validation for model validation
 validation_results = []
 for model_name, model in models.items():
-    cv_score = cross_val_score(model, X_train_scaled, y_train,
-                               cv=StratifiedKFold(n_splits=10, shuffle=True, random_state=42), scoring='accuracy')
+    cv_score = cross_val_score(model, X_train_scaled, y_train, cv=cv, scoring='accuracy')
     validation_results.append({
         'Model': model_name,
         'CV Mean Accuracy': cv_score.mean(),
@@ -129,8 +134,7 @@ for model_name, model in models.items():
     })
 
 # Cross-validation for optimized KNN
-cv_score_knn = cross_val_score(knn_best, X_train_scaled, y_train,
-                               cv=StratifiedKFold(n_splits=10, shuffle=True, random_state=42), scoring='accuracy')
+cv_score_knn = cross_val_score(knn_best, X_train_scaled, y_train, cv=cv, scoring='accuracy')
 validation_results.append({
     'Model': 'Optimized KNN',
     'CV Mean Accuracy': cv_score_knn.mean(),
@@ -174,9 +178,9 @@ def plot_confusion_matrix(y_true, y_pred, model_name, filename):
     plt.close()
 
 # Corrected the confusion matrix call to pass predictions, not accuracy score
-plot_confusion_matrix(y_test, y_test_pred, 'Optimized KNN', 'knn_confusion_matrix')
-plot_confusion_matrix(y_test, models['Random Forest'].predict(X_test_scaled), 'Random Forest', 'rf_confusion_matrix')  # Corrected here
-plot_confusion_matrix(y_test, models['SVM'].predict(X_test_scaled), 'SVM', 'svm_confusion_matrix')
+plot_confusion_matrix(y_test, knn_y_test_pred, 'Optimized KNN', 'knn_confusion_matrix')
+plot_confusion_matrix(y_test, test_predictions['Random Forest'], 'Random Forest', 'rf_confusion_matrix')
+plot_confusion_matrix(y_test, test_predictions['SVM'], 'SVM', 'svm_confusion_matrix')
 
 
 # ROC Curves for KNN, Random Forest, and SVM
@@ -195,6 +199,6 @@ def plot_roc_curve(y_true, y_pred_proba, model_name, filename):
     plt.close()
 
 
-plot_roc_curve(y_test, knn_best.predict_proba(X_test_scaled), 'Optimized KNN', 'knn')
-plot_roc_curve(y_test, models['Random Forest'].predict_proba(X_test_scaled), 'Random Forest', 'rf')
-plot_roc_curve(y_test, models['SVM'].predict_proba(X_test_scaled), 'SVM', 'svm')
+plot_roc_curve(y_test, test_probabilities['Optimized KNN'], 'Optimized KNN', 'knn')
+plot_roc_curve(y_test, test_probabilities['Random Forest'], 'Random Forest', 'rf')
+plot_roc_curve(y_test, test_probabilities['SVM'], 'SVM', 'svm')
